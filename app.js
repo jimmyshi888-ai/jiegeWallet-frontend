@@ -23,6 +23,11 @@ const transactionListTitle = document.getElementById("transaction-list-title");
 const totalIncome = document.getElementById("total-income");
 const totalExpense = document.getElementById("total-expense");
 
+// ✨✨✨ 新增：取得總累計的 DOM 元素 ✨✨✨
+const allTimeIncomeEl = document.getElementById("all-time-income");
+const allTimeExpenseEl = document.getElementById("all-time-expense");
+const netAssetsEl = document.getElementById("net-assets");
+
 const budgetSection = document.getElementById("budget-section");
 const budgetRemaining = document.getElementById("budget-remaining");
 const budgetProgressBar = document.getElementById("budget-progress-bar");
@@ -31,6 +36,8 @@ const budgetPercent = document.getElementById("budget-percent");
 
 // ===== API Helper =====
 async function api(endpoint, options = {}) {
+  // 注意：這裡假設 CONFIG 已經在 config.js 定義好了
+  // 如果沒有，請確保前面有定義 const CONFIG = { API_BASE_URL: "..." };
   const url = `${CONFIG.API_BASE_URL}${endpoint}`;
   const headers = {
     "Content-Type": "application/json",
@@ -191,6 +198,7 @@ function updateSummary() {
   // 更新標題為當月
   transactionListTitle.textContent = `${currentMonth + 1}月收支`;
 
+  // --- 1. 計算當月收支 (原本的邏輯) ---
   const monthlyTransactions = transactions.filter((txn) => {
     const txnDate = new Date(txn.date);
     return (
@@ -210,7 +218,32 @@ function updateSummary() {
   totalIncome.textContent = income.toLocaleString();
   totalExpense.textContent = expense.toLocaleString();
 
-  // Update Budget UI
+  // --- 2. ✨✨✨ 新增：計算歷史總收支與總資產 (不篩選月份) ✨✨✨ ---
+  
+  // 歷史總收入
+  const allTimeIncome = transactions
+    .filter((txn) => txn.type === "income")
+    .reduce((sum, txn) => sum + Number(txn.amount), 0);
+
+  // 歷史總支出
+  const allTimeExpense = transactions
+    .filter((txn) => txn.type === "expense")
+    .reduce((sum, txn) => sum + Number(txn.amount), 0);
+
+  // 總資產 = 總收入 - 總支出
+  const netAssets = allTimeIncome - allTimeExpense;
+
+  // 更新畫面 (如果有找到對應的 HTML 元素才更新)
+  if (allTimeIncomeEl) allTimeIncomeEl.textContent = allTimeIncome.toLocaleString();
+  if (allTimeExpenseEl) allTimeExpenseEl.textContent = allTimeExpense.toLocaleString();
+  
+  if (netAssetsEl) {
+    netAssetsEl.textContent = `$${netAssets.toLocaleString()}`;
+    // 讓總資產如果是正的顯示綠色，負的顯示紅色
+    netAssetsEl.style.color = netAssets >= 0 ? "#5abf98" : "#ff7675";
+  }
+
+  // --- 3. 更新預算介面 ---
   const budgetAmount = Number(budget.amount);
   const remaining = budgetAmount - expense;
   const percent =

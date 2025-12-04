@@ -117,6 +117,20 @@
 
             <div class="list-container">
                 <h3 id="transaction-list-title">11月收支</h3>
+
+                <div style="margin-bottom: 15px;">
+                    <select id="category-filter" class="swal2-select" style="margin: 0; width: 100%; font-size: 0.95rem;">
+                        <option value="all">📋 顯示所有類別</option>
+                        </select>
+                </div>
+
+                <div id="category-stats-panel" class="hidden"
+                    style="background: #f8f9fa; padding: 12px; border-radius: 10px; margin-bottom: 16px; border: 1px dashed #ced4da;">
+                    <h4 style="margin: 0 0 8px 0; color: #666; font-size: 0.9rem;">📅 該類別每月統計</h4>
+                    <ul id="category-monthly-list"
+                        style="list-style: none; padding: 0; margin: 0; font-size: 0.9rem; color: #444;">
+                        </ul>
+                </div>
                 <div id="transaction-list" class="transaction-list">
                     </div>
             </div>
@@ -140,7 +154,7 @@
             <div class="form-group">
                 <label>類別</label>
                 <select id="swal-category" class="swal2-select">
-                    </select>
+                </select>
             </div>
             <div class="form-group">
                 <label>金額</label>

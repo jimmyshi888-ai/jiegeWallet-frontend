@@ -23,10 +23,15 @@ const transactionListTitle = document.getElementById("transaction-list-title");
 const totalIncome = document.getElementById("total-income");
 const totalExpense = document.getElementById("total-expense");
 
-// ✨✨✨ 新增：取得總累計的 DOM 元素 ✨✨✨
+// 總累計的 DOM 元素
 const allTimeIncomeEl = document.getElementById("all-time-income");
 const allTimeExpenseEl = document.getElementById("all-time-expense");
 const netAssetsEl = document.getElementById("net-assets");
+
+// ✨✨✨ 新增：篩選與統計相關 DOM 元素 ✨✨✨
+const categoryFilter = document.getElementById("category-filter");
+const categoryStatsPanel = document.getElementById("category-stats-panel");
+const categoryMonthlyList = document.getElementById("category-monthly-list");
 
 const budgetSection = document.getElementById("budget-section");
 const budgetRemaining = document.getElementById("budget-remaining");
@@ -37,7 +42,6 @@ const budgetPercent = document.getElementById("budget-percent");
 // ===== API Helper =====
 async function api(endpoint, options = {}) {
   // 注意：這裡假設 CONFIG 已經在 config.js 定義好了
-  // 如果沒有，請確保前面有定義 const CONFIG = { API_BASE_URL: "..." };
   const url = `${CONFIG.API_BASE_URL}${endpoint}`;
   const headers = {
     "Content-Type": "application/json",
@@ -118,6 +122,9 @@ async function loadData() {
 async function loadCategories() {
   const data = await api("/api/categories");
   categories = data.data || [];
+  
+  // ✨✨✨ 載入類別後，順便更新篩選選單 ✨✨✨
+  updateCategoryFilterOptions();
 }
 
 async function loadTransactions() {
@@ -125,6 +132,10 @@ async function loadTransactions() {
   transactions = data.data || [];
   renderTransactions();
   updateSummary();
+  // 如果目前有選取分類，也要更新統計
+  if (categoryFilter.value !== "all") {
+    renderCategoryStats();
+  }
 }
 
 async function loadBudget() {
@@ -133,9 +144,38 @@ async function loadBudget() {
   updateSummary();
 }
 
+// ✨✨✨ 新增：更新篩選選單選項 ✨✨✨
+function updateCategoryFilterOptions() {
+  // 記錄當前選中的值，以免重新渲染時跑掉
+  const currentValue = categoryFilter.value;
+
+  categoryFilter.innerHTML = '<option value="all">📋 顯示所有類別</option>';
+  
+  categories.forEach(cat => {
+    const option = document.createElement("option");
+    option.value = cat.id;
+    option.textContent = cat.name;
+    categoryFilter.appendChild(option);
+  });
+
+  // 如果原本選的值還在（例如編輯完類別回來），就設回去
+  if (currentValue && categories.some(c => c.id === currentValue)) {
+    categoryFilter.value = currentValue;
+  }
+}
+
 // ===== Render Functions =====
 function renderTransactions() {
-  if (transactions.length === 0) {
+  // ✨✨✨ 修改：取得篩選值 ✨✨✨
+  const selectedCatId = categoryFilter.value;
+
+  // ✨✨✨ 修改：根據篩選值過濾資料 ✨✨✨
+  let displayTransactions = transactions;
+  if (selectedCatId !== "all") {
+    displayTransactions = transactions.filter(txn => txn.category_id === selectedCatId);
+  }
+
+  if (displayTransactions.length === 0) {
     transactionList.innerHTML = `<div style="text-align:center; padding:20px; color:#9ca095;">
       🍃 這裡空空的，還沒有紀錄喔！
     </div>`;
@@ -143,8 +183,7 @@ function renderTransactions() {
   }
 
   // 按 ID 排序（新的在前），如果 ID 相同才按日期
-  const sorted = [...transactions].sort((a, b) => {
-    // 嘗試將 ID 轉為數字比較（處理 txn-timestamp 格式）
+  const sorted = [...displayTransactions].sort((a, b) => {
     const getIdNum = (id) => {
       const match = id.match(/(\d+)$/);
       return match ? Number(match[1]) : 0;
@@ -152,7 +191,6 @@ function renderTransactions() {
     const idDiff = getIdNum(b.id) - getIdNum(a.id);
     if (idDiff !== 0) return idDiff;
 
-    // ID 無法比較時，按日期排序
     return new Date(b.date) - new Date(a.date);
   });
 
@@ -190,6 +228,49 @@ function renderTransactions() {
     .join("");
 }
 
+// ✨✨✨ 新增：計算該類別每月金額 ✨✨✨
+function renderCategoryStats() {
+  const selectedCatId = categoryFilter.value;
+
+  // 如果選的是「全部」，就隱藏統計面板
+  if (selectedCatId === "all") {
+    categoryStatsPanel.classList.add("hidden");
+    return;
+  }
+
+  // 顯示面板
+  categoryStatsPanel.classList.remove("hidden");
+
+  // 1. 篩選出該類別的所有交易
+  const targetTxns = transactions.filter(txn => txn.category_id === selectedCatId);
+
+  // 2. 依照月份分組並加總
+  const monthlyTotals = targetTxns.reduce((acc, txn) => {
+    const monthKey = txn.date.substring(0, 7); // 取出 YYYY-MM
+    if (!acc[monthKey]) acc[monthKey] = 0;
+    acc[monthKey] += Number(txn.amount);
+    return acc;
+  }, {});
+
+  // 3. 排序月份 (新的月份在上面)
+  const sortedMonths = Object.keys(monthlyTotals).sort((a, b) => new Date(b) - new Date(a));
+
+  // 4. 產生 HTML
+  if (sortedMonths.length === 0) {
+    categoryMonthlyList.innerHTML = "<li>尚無紀錄</li>";
+  } else {
+    categoryMonthlyList.innerHTML = sortedMonths.map(month => {
+        const amount = monthlyTotals[month];
+        return `
+            <li style="display:flex; justify-content:space-between; padding: 4px 0; border-bottom: 1px dotted #eee;">
+                <span>🗓️ ${month}</span>
+                <span style="font-weight:bold; color: #555;">$${amount.toLocaleString()}</span>
+            </li>
+        `;
+    }).join("");
+  }
+}
+
 function updateSummary() {
   const now = new Date();
   const currentMonth = now.getMonth();
@@ -218,28 +299,22 @@ function updateSummary() {
   totalIncome.textContent = income.toLocaleString();
   totalExpense.textContent = expense.toLocaleString();
 
-  // --- 2. ✨✨✨ 新增：計算歷史總收支與總資產 (不篩選月份) ✨✨✨ ---
-  
-  // 歷史總收入
+  // --- 2. 計算歷史總收支與總資產 ---
   const allTimeIncome = transactions
     .filter((txn) => txn.type === "income")
     .reduce((sum, txn) => sum + Number(txn.amount), 0);
 
-  // 歷史總支出
   const allTimeExpense = transactions
     .filter((txn) => txn.type === "expense")
     .reduce((sum, txn) => sum + Number(txn.amount), 0);
 
-  // 總資產 = 總收入 - 總支出
   const netAssets = allTimeIncome - allTimeExpense;
 
-  // 更新畫面 (如果有找到對應的 HTML 元素才更新)
   if (allTimeIncomeEl) allTimeIncomeEl.textContent = allTimeIncome.toLocaleString();
   if (allTimeExpenseEl) allTimeExpenseEl.textContent = allTimeExpense.toLocaleString();
   
   if (netAssetsEl) {
     netAssetsEl.textContent = `$${netAssets.toLocaleString()}`;
-    // 讓總資產如果是正的顯示綠色，負的顯示紅色
     netAssetsEl.style.color = netAssets >= 0 ? "#5abf98" : "#ff7675";
   }
 
@@ -253,13 +328,11 @@ function updateSummary() {
   totalBudget.textContent = `$${budgetAmount.toLocaleString()}`;
   budgetPercent.textContent = `${percent}%`;
 
-  // Progress Bar
   let progressWidth = budgetAmount > 0 ? (remaining / budgetAmount) * 100 : 0;
-  progressWidth = Math.max(0, Math.min(100, progressWidth)); // Clamp between 0-100
+  progressWidth = Math.max(0, Math.min(100, progressWidth));
   budgetProgressBar.style.width = `${progressWidth}%`;
 
-  // Colors
-  budgetProgressBar.className = "progress-bar-fill"; // reset
+  budgetProgressBar.className = "progress-bar-fill";
   if (percent < 20) {
     budgetProgressBar.classList.add("danger");
   } else if (percent < 50) {
@@ -313,7 +386,6 @@ async function openBudgetModal() {
 
 // 新增交易彈窗
 async function openAddTransactionModal() {
-  // 準備類別選項 HTML
   const categoryOptions = categories
     .map((cat) => `<option value="${cat.id}">${cat.name}</option>`)
     .join("");
@@ -371,7 +443,6 @@ async function openAddTransactionModal() {
     if (!formValues.amount)
       return Swal.fire("哎呀！", "金額沒填喔！", "warning");
 
-    // 顯示 loading
     Swal.fire({
       title: "處理中...",
       text: "正在儲存記帳資料",
@@ -461,6 +532,9 @@ async function openManageCategoryModal() {
         body: JSON.stringify(newCat),
       });
       await loadCategories();
+      // 因為新增了類別，篩選選單也要更新
+      updateCategoryFilterOptions();
+      
       Swal.fire("成功", "類別已新增！", "success").then(() =>
         openManageCategoryModal()
       );
@@ -515,7 +589,9 @@ window.editCategory = async function (id, currentName, currentColor) {
         body: JSON.stringify(updatedCat),
       });
       await loadCategories();
-      // 編輯完後重新打開管理列表，方便繼續操作
+      // 因為修改了類別名稱，篩選選單也要更新
+      updateCategoryFilterOptions();
+      
       Swal.fire("成功", "類別已更新！", "success").then(() =>
         openManageCategoryModal()
       );
@@ -613,7 +689,6 @@ window.editTransaction = async function (id) {
     if (!formValues.amount)
       return Swal.fire("哎呀！", "金額沒填喔！", "warning");
 
-    // 顯示 loading
     Swal.fire({
       title: "更新中...",
       text: "正在儲存變更",
@@ -640,7 +715,6 @@ window.editTransaction = async function (id) {
   }
 };
 
-// 把刪除函式掛載到 window 以便在 innerHTML onclick 中呼叫
 window.deleteTransaction = async function (id) {
   const result = await Swal.fire({
     title: "確定要刪除嗎？",
@@ -678,6 +752,8 @@ window.deleteCategory = async function (id) {
     try {
       await api(`/api/categories/${id}`, { method: "DELETE" });
       await loadCategories();
+      // 類別被刪除後，記得更新篩選選單
+      updateCategoryFilterOptions();
       Swal.fire("已刪除！", "類別已移除。", "success");
     } catch (error) {
       Swal.fire("失敗", error.message, "error");
@@ -708,6 +784,12 @@ logoutBtn.addEventListener("click", logout);
 btnAddTransaction.addEventListener("click", openAddTransactionModal);
 btnManageCategory.addEventListener("click", openManageCategoryModal);
 budgetSection.addEventListener("click", openBudgetModal);
+
+// ✨✨✨ 新增：監聽篩選選單變化 ✨✨✨
+categoryFilter.addEventListener("change", () => {
+  renderTransactions();   // 重新渲染列表
+  renderCategoryStats();  // 更新統計面板
+});
 
 // ===== Initialize =====
 async function init() {
